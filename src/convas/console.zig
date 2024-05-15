@@ -1,6 +1,7 @@
 const std = @import("std");
-const win = @import("win.zig");
 const convas = @import("convas.zig");
+const win = convas.win;
+const input = convas.input;
 
 //Errors (--
 pub const InitError = error{
@@ -28,7 +29,7 @@ pub fn isInitialized() bool {
 pub fn init() InitError!void {
     if (isInitialized()) return InitError.ConsoleAlreadyInitialized;
 
-    window = win.CreateWindowExW(0, window_classname, null, win.WS_OVERLAPPED_WINDOW, 0, 0, 640, 640, null, null, @ptrCast(convas.getModuleHandle()), null);
+    window = win.CreateWindowExW(0, window_classname, null, win.WS_OVERLAPPED_WINDOW, 0, 0, 640, 640, null, null, convas.getHInstance(), null);
 
     if (window == null) return InitError.CreateConsoleWindowFail;
 }
@@ -57,4 +58,14 @@ pub fn deinit() DeinitError!void {
     if (win.DestroyWindow(window.?) == 0) return DeinitError.DestroyConsoleWindowFail;
 
     window = null;
+}
+
+pub fn getEvent(event: *input.InputEvent) bool {
+    var msg: win.MSG = undefined;
+
+    var keepGoing = false;
+
+    while (win.PeekMessageW(&msg, window.*, 0, 0, win.PM_REMOVE)) {
+        switch (msg.msg) {}
+    }
 }
