@@ -1,25 +1,19 @@
 const std = @import("std");
 const convas = @import("convas/convas.zig");
-const console = convas.console;
-
-fn printErrorCode() void {
-    std.debug.print("Error code : {}\n", .{convas.getLastWinError()});
-}
+const window = convas.window;
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
-    const stdin = std.io.getStdIn().reader();
-
-    _ = stdout;
-
-    errdefer printErrorCode();
-
     try convas.init();
-    try console.init();
 
-    try console.show();
+    try window.init(window.Options{ .title = convas.utf16LeLiteral("My window!") });
 
-    _ = try stdin.readByte();
+    try window.show();
+
+    while (window.isInitialized()) {
+        while (window.getEvent()) |event| {
+            _ = event;
+        }
+    }
 
     try convas.deinit();
 }
