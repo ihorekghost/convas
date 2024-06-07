@@ -1,11 +1,18 @@
+const std = @import("std");
+
+const math = @import("math.zig");
 const convas = @import("convas.zig");
-const window = @import("window.zig");
+const convas_data = @import("data.zig");
+const window = @import("window/window.zig");
+const window_data = @import("window/data.zig");
 const winapi = @import("winapi.zig");
 const gl = @import("gl.zig");
 
 const utf16LeLiteral = convas.utf16LeLiteral;
 
 pub const Error = error{
+    ConvasWindowClassAlreadyInitialized,
+    ConvasWindowClassNotInitialized,
     RegisterWindowClassFail,
     UnregisterWindowClassFail,
 };
@@ -19,29 +26,30 @@ pub fn init() !void {
         .hbrBackground = null,
         .hCursor = winapi.LoadCursorW(null, winapi.Cursor.Arrow),
         .hIcon = null,
-        .hInstance = try convas._getModuleInstanceHandle(),
+        .hInstance = convas_data.get().module_instance_handle,
         .lpfnWndProc = procedure,
         .lpszClassName = name,
         .lpszMenuName = null,
         .style = 0,
     };
 
-    if (winapi.RegisterClassW(&wclass) == 0) return @This().Error.RegisterWindowClassFail;
+    if (winapi.RegisterClassW(&wclass) == 0) return Error.RegisterWindowClassFail;
 }
 
-pub fn deinit() void {
-    _ = winapi.UnregisterClassW(name, convas._instance.?.module_instance_handle);
+pub fn deinit() !void {
+    if (winapi.UnregisterClassW(name, convas_data.get().module_instance_handle) == winapi.FALSE) return Error.UnregisterWindowClassFail;
 }
 
 fn procedure(hwnd: winapi.HWND, msg: winapi.WindowMessageType, wparam: winapi.WPARAM, lparam: winapi.LPARAM) callconv(winapi.WINAPI) winapi.LRESULT {
-    if (window._instance) |*window_instance| {
-        window_instance.event_handler(window.Event.fromWindowMessage(msg, wparam, lparam));
+    if (window_data.instance) |*window_instance| {
+        window_instance.event_queue.append(window.event.Event.fromWindowMessage(msg, wparam, lparam)) catch {};
 
         switch (msg) {
-            .Resize => gl.viewport(0, 0, winapi.LOWORD(lparam), winapi.HIWORD(lparam)),
+            .MouseMove => window_data._onMouseMove(.{ winapi.extractXCoord(lparam), winapi.extractYCoord(lparam) }),
+            .Resize => window_data._onResize(.{ winapi.extractLowWord(lparam), winapi.extractHighWord(lparam) }),
             .SetFocus => window_instance.is_focused = true,
             .KillFocus => window_instance.is_focused = false,
-            .Destroy => window.deinit(),
+            .Destroy => window.deinit() catch {},
             .Close => {},
             else => return winapi.DefWindowProcW(hwnd, msg, wparam, lparam),
         }

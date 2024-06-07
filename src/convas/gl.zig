@@ -42,7 +42,7 @@ pub const vertex2f = glVertex2f;
 pub const swapBuffers = SwapBuffers;
 pub const viewport = glViewport;
 
-extern "Opengl32" fn wglMakeCurrent(dc: winapi.HDC, hglrc: winapi.HGLRC) callconv(winapi.WINAPI) winapi.BOOL;
+extern "Opengl32" fn wglMakeCurrent(dc: ?winapi.HDC, hglrc: ?winapi.HGLRC) callconv(winapi.WINAPI) winapi.BOOL;
 extern "Opengl32" fn wglCreateContext(hdc: winapi.HDC) callconv(winapi.WINAPI) ?winapi.HGLRC;
 extern "Opengl32" fn wglDeleteContext(hglrc: winapi.HGLRC) callconv(winapi.WINAPI) winapi.BOOL;
 extern "Opengl32" fn glOrtho(left: GLdouble, right: GLdouble, bottom: GLdouble, top: GLdouble, zNear: GLdouble, zFar: GLdouble) callconv(winapi.WINAPI) void;

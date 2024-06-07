@@ -4,22 +4,26 @@ const window = convas.window;
 
 const utf16Le = convas.utf16LeLiteral;
 
-fn onWindowEvent(event: window.Event) void {
-    if (event == .Close) window.deinit();
-}
-
 pub fn main() !void {
     try convas.init();
-    defer convas.deinit();
 
-    try window.init(.{ .title = utf16Le("My Window"), .event_handler = onWindowEvent });
+    try window.init(.{ .title = utf16Le("Main") });
 
-    try window.show();
+    window.show();
 
-    while (window.pollEvents()) {
+    main_loop: while (window.pollEvents()) {
+        //Event loop
+        while (window.getEvent()) |event| {
+            switch (event) {
+                .Close => {
+                    try window.deinit();
+                    break :main_loop;
+                },
+
+                else => {},
+            }
+        }
+
         window.update();
-        std.time.sleep(16_666_666);
     }
-
-    std.debug.print("Window Destroyed!", .{});
 }

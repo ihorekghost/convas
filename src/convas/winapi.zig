@@ -1,10 +1,23 @@
 const std = @import("std");
 const meta = @import("meta.zig");
+const math = @import("math.zig");
 const windows = std.os.windows;
+
+const Error = error{
+    WinapiSetPixelFormatFail,
+    WinapiChoosePixelFormatFail,
+    WinapiCreateWindowFail,
+    WinapiDestroyWindowFail,
+    WinapiRegisterWindowClassFail,
+    WinapiUnregisterWindowClassFail,
+    WinapiGetDCFail,
+    WinapiLoadCursorFail,
+    WinapiGetModuleHandleFail,
+};
 
 pub usingnamespace windows;
 
-pub fn LOWORD(number: anytype) i16 {
+pub fn extractLowWord(number: anytype) windows.WORD {
     comptime {
         if (!meta.isNumeric(@TypeOf(number))) @compileError("\"number\" must be a numeric type!");
     }
@@ -12,19 +25,66 @@ pub fn LOWORD(number: anytype) i16 {
     return @intCast(number & 0xffff);
 }
 
-pub fn HIWORD(number: anytype) i16 {
+pub fn extractHighWord(number: anytype) windows.WORD {
     comptime {
         if (!meta.isNumeric(@TypeOf(number))) @compileError("\"number\" must be a numeric type!");
     }
 
-    return @intCast((number >> 16) & 0xffff);
+    return @truncate(@as(windows.WORD, @intCast((number >> 16) & 0xffff)));
 }
 
-//Kernel32
-pub extern "Kernel32" fn GetModuleHandleW(lpModuleName: ?windows.LPCWSTR) callconv(windows.WINAPI) windows.HMODULE;
+pub fn extractXCoord(number: anytype) c_short {
+    return @bitCast(extractLowWord(number));
+}
+
+pub fn extractYCoord(number: anytype) c_short {
+    return @bitCast(extractHighWord(number));
+}
+
+//Kernel32 (---
+extern "Kernel32" fn _GetModuleHandleW(lpModuleName: ?windows.LPCWSTR) callconv(windows.WINAPI) windows.HMODULE;
+
 pub extern "Kernel32" fn GetLastError() callconv(windows.WINAPI) windows.DWORD;
+//---)
 
 //Gdi32
+extern "Gdi32" fn _SetPixelFormat(hdc: windows.HDC, format: c_int, ppfd: *const PIXELFORMATDESCRIPTOR) windows.BOOL;
+extern "Gdi32" fn _ChoosePixelFormat(hdc: windows.HDC, ppfd: *const PIXELFORMATDESCRIPTOR) callconv(windows.WINAPI) c_int;
+
+//---)
+
+//User32 (-------------------------------------
+extern "User32" fn _RegisterClassW(class: *const WNDCLASSW) callconv(windows.WINAPI) windows.ATOM;
+extern "User32" fn _UnregisterClassW(class_name: windows.LPCWSTR, hInstance: windows.HINSTANCE) callconv(windows.WINAPI) windows.BOOL;
+extern "User32" fn _CreateWindowExW(
+    dwExStyle: windows.DWORD,
+    lpClassName: ?windows.LPCWSTR,
+    lpWindowName: ?windows.LPCWSTR,
+    dwStyle: windows.DWORD,
+    pos_x: c_int,
+    pos_y: c_int,
+    size_x: c_int,
+    size_y: c_int,
+    hWndParent: ?windows.HWND,
+    hMenu: ?windows.HMENU,
+    hInstance: ?windows.HINSTANCE,
+    lpPara: ?windows.LPVOID,
+) callconv(windows.WINAPI) ?windows.HWND;
+extern "User32" fn _DestroyWindow(window: windows.HWND) callconv(windows.WINAPI) windows.BOOL;
+extern "User32" fn _LoadCursorW(hInstance: ?windows.HINSTANCE, cursor: windows.LPCWSTR) callconv(windows.WINAPI) windows.HCURSOR;
+extern "User32" fn _GetDC(hwnd: ?windows.HWND) callconv(windows.WINAPI) ?windows.HDC;
+
+pub extern "User32" fn DispatchMessageW(msg: *const MSG) callconv(windows.WINAPI) windows.LRESULT;
+pub extern "User32" fn PeekMessageW(msg: *MSG, hwnd: ?windows.HWND, msg_filter_min: windows.UINT, msg_filter_max: windows.UINT, remove_msg: windows.UINT) callconv(windows.WINAPI) windows.BOOL;
+pub extern "User32" fn DefWindowProcW(windows.HWND, WindowMessageType, windows.WPARAM, windows.LPARAM) callconv(windows.WINAPI) windows.LRESULT;
+pub extern "User32" fn ShowWindow(window: windows.HWND, show_cmd: WindowVisibility) callconv(windows.WINAPI) windows.BOOL;
+pub extern "User32" fn GetSystemMetrics(metric: SystemMetric) callconv(windows.WINAPI) c_int;
+pub extern "User32" fn TranslateMessage(msg: *const MSG) callconv(windows.WINAPI) windows.BOOL;
+
+pub fn MAKEINTRESOURCEW(i: anytype) windows.LPCWSTR {
+    return @ptrFromInt(i);
+}
+
 pub const PIXELFORMATDESCRIPTOR = extern struct {
     pub const Flags = struct {
         pub const SupportOpenGL = 0x00000020;
@@ -66,13 +126,7 @@ pub const PIXELFORMATDESCRIPTOR = extern struct {
     dwDamageMask: windows.DWORD,
 };
 
-pub extern "Gdi32" fn SetPixelFormat(hdc: windows.HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) windows.BOOL;
-pub extern "Gdi32" fn CreateSolidBrush(color: windows.DWORD) callconv(windows.WINAPI) ?windows.HBRUSH;
-pub extern "Gdi32" fn DeleteObject(object: *opaque {}) callconv(windows.WINAPI) windows.BOOL;
-pub extern "Gdi32" fn ChoosePixelFormat(hdc: windows.HDC, ppfd: *const PIXELFORMATDESCRIPTOR) callconv(windows.WINAPI) i32;
-
-//User32 (-------------------------------------
-pub const SystemMetric = enum(i32) {
+pub const SystemMetric = enum(c_int) {
     ScreenWidth = 0,
     ScreenHeight = 1,
     _,
@@ -84,7 +138,7 @@ pub const PeekMessageAction = struct {
     pub const Remove = 1;
 };
 
-pub const WindowLong = enum(i32) {
+pub const WindowLong = enum(c_int) {
     GWLPUserData = -21,
     _,
 };
@@ -119,6 +173,8 @@ pub const WindowMessageType = enum(windows.UINT) {
     SetFocus = 0x0007,
     KillFocus = 0x0008,
     Resize = 0x0005,
+    Resizing = 0x0214,
+    Paint = 15,
     _,
 };
 
@@ -126,8 +182,8 @@ pub const WindowClassStyle = enum(windows.UINT) {
     OwnDC = 0x0020,
 };
 
-pub const WindowVisibility = enum(i32) {
-    pub fn fromBool(visible: bool) i32 {
+pub const WindowVisibility = enum(c_int) {
+    pub fn fromBool(visible: bool) c_int {
         return switch (visible) {
             true => @This().Show,
             false => @This().Hide,
@@ -142,8 +198,8 @@ pub const WindowVisibility = enum(i32) {
 pub const WNDCLASSW = extern struct {
     style: windows.UINT,
     lpfnWndProc: WNDPROC,
-    cbClsExtra: i32,
-    cbWndExtra: i32,
+    cbClsExtra: c_int,
+    cbWndExtra: c_int,
     hInstance: windows.HINSTANCE,
     hIcon: ?windows.HICON,
     hCursor: ?windows.HCURSOR,
@@ -161,41 +217,6 @@ pub const MSG = extern struct {
     cursor: windows.POINT,
     lpPrivate: windows.DWORD,
 };
-
-pub extern "User32" fn RegisterClassW(class: *const WNDCLASSW) callconv(windows.WINAPI) windows.ATOM;
-pub extern "User32" fn UnregisterClassW(class_name: windows.LPCWSTR, hInstance: windows.HINSTANCE) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn CreateWindowExW(
-    dwExStyle: windows.DWORD,
-    lpClassName: ?windows.LPCWSTR,
-    lpWindowName: ?windows.LPCWSTR,
-    dwStyle: windows.DWORD,
-    pos_x: i32,
-    pos_y: i32,
-    size_x: i32,
-    size_y: i32,
-    hWndParent: ?windows.HWND,
-    hMenu: ?windows.HMENU,
-    hInstance: ?windows.HINSTANCE,
-    lpPara: ?windows.LPVOID,
-) callconv(windows.WINAPI) ?windows.HWND;
-pub extern "User32" fn ShowWindow(window: windows.HWND, show_cmd: WindowVisibility) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn DestroyWindow(window: windows.HWND) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn DefWindowProcW(windows.HWND, WindowMessageType, windows.WPARAM, windows.LPARAM) callconv(windows.WINAPI) windows.LRESULT;
-pub extern "User32" fn PeekMessageW(msg: *MSG, hwnd: ?windows.HWND, msg_filter_min: windows.UINT, msg_filter_max: windows.UINT, remove_msg: windows.UINT) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn DispatchMessageW(msg: *const MSG) callconv(windows.WINAPI) windows.LRESULT;
-pub extern "User32" fn TranslateMessage(msg: *const MSG) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn GetMessageW(msg: *MSG, hwnd: ?windows.HWND, msg_filter_min: windows.UINT, msg_filter_max: windows.UINT) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn LoadCursorW(hInstance: ?windows.HINSTANCE, cursor: windows.LPCWSTR) callconv(windows.WINAPI) windows.HCURSOR;
-pub extern "User32" fn PostQuitMessage(exitCode: i32) callconv(windows.WINAPI) void;
-pub extern "User32" fn SetWindowLongPtrW(hwnd: windows.HWND, long: WindowLong, value: windows.LONG_PTR) callconv(windows.WINAPI) windows.LONG_PTR;
-pub extern "User32" fn GetCursorPos(pos: *windows.POINT) callconv(windows.WINAPI) windows.BOOL;
-pub extern "User32" fn GetSystemMetrics(metric: SystemMetric) callconv(windows.WINAPI) i32;
-pub extern "User32" fn GetDC(hwnd: ?windows.HWND) callconv(windows.WINAPI) ?windows.HDC;
-//--------------------------)
-
-pub fn MAKEINTRESOURCEW(i: anytype) windows.LPCWSTR {
-    return @ptrFromInt(i);
-}
 
 pub const VirtualKey = enum(usize) {
     LButton = 0x01,
@@ -372,3 +393,4 @@ pub const VirtualKey = enum(usize) {
     OemClear = 0xFE,
     _,
 };
+//--------------------------)
