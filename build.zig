@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{ .default_target = .{ .cpu_arch = .x86_64, .os_tag = .windows } });
+    const target = b.standardTargetOptions(.{ .default_target = .{ .cpu_arch = .x86, .os_tag = .windows } });
 
     const optimize = b.standardOptimizeOption(.{});
 
@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
 
     exe.linkSystemLibrary("User32");
     exe.linkSystemLibrary("Kernel32");
-    exe.linkSystemLibrary("opengl32");
+    exe.linkSystemLibrary("Opengl32");
     exe.linkSystemLibrary("Gdi32");
 
     b.installArtifact(exe);

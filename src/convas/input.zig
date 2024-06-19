@@ -1,4 +1,4 @@
-const winapi = @import("winapi.zig");
+const winapi = @import("winapi/winapi.zig");
 
 pub const MouseButton = enum(u2) {
     pub fn toString(button: MouseButton) []const u8 {
